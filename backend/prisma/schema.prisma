@@ -1,0 +1,211 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model with role-based access control
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          UserRole  @default(OPERATOR)
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     String
+  maxDiscount   Float     @default(0) // Maximum discount percentage allowed for this user
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  orders        Order[]
+  createdDocks  Dock[]    @relation("DockCreator")
+  
+  @@index([companyId])
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  CLIENT
+}
+
+// Company model
+model Company {
+  id            String    @id @default(uuid())
+  name          String
+  cnpj          String    @unique
+  address       String
+  phone         String
+  email         String
+  maxDiscount   Float     @default(0) // Maximum discount percentage allowed for this company
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  users         User[]
+  products      Product[]
+  customers     Customer[]
+  orders        Order[]
+  docks         Dock[]
+  holidays      Holiday[]
+}
+
+// Product model
+model Product {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  sku           String    @unique
+  price         Float
+  stock         Int       @default(0)
+  loadTime      Int       @default(10) // Time in minutes to load/unload this product
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     String
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  orderItems    OrderItem[]
+  
+  @@index([companyId])
+}
+
+// Customer model
+model Customer {
+  id            String    @id @default(uuid())
+  name          String
+  cnpj          String    @unique
+  address       String
+  phone         String
+  email         String
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     String
+  isFidelized   Boolean   @default(false)
+  quotaMinutes  Int       @default(0) // Available quota in minutes for fidelized customers
+  autoReserve   Boolean   @default(false) // Whether to automatically reserve slots
+  preferredDays Int[]     // Array of days of the week (0-6) for auto-reservation
+  preferredTime String?   // Preferred time for reservation (HH:MM format)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  orders        Order[]
+  
+  @@index([companyId])
+}
+
+// Order model
+model Order {
+  id            String    @id @default(uuid())
+  orderNumber   String    @unique
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  customerId    String
+  user          User      @relation(fields: [userId], references: [id])
+  userId        String
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     String
+  status        OrderStatus @default(PENDING)
+  totalAmount   Float
+  totalDiscount Float     @default(0)
+  scheduledDate DateTime?
+  dock          Dock?     @relation(fields: [dockId], references: [id])
+  dockId        String?
+  startTime     DateTime? // Start time of dock occupation
+  endTime       DateTime? // End time of dock occupation
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  items         OrderItem[]
+  
+  @@index([customerId])
+  @@index([userId])
+  @@index([companyId])
+  @@index([dockId])
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Order Item model
+model OrderItem {
+  id            String    @id @default(uuid())
+  order         Order     @relation(fields: [orderId], references: [id])
+  orderId       String
+  product       Product   @relation(fields: [productId], references: [id])
+  productId     String
+  quantity      Int
+  unitPrice     Float
+  discount      Float     @default(0) // Discount percentage for this item
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([orderId])
+  @@index([productId])
+}
+
+// Dock model
+model Dock {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     String
+  creator       User      @relation("DockCreator", fields: [creatorId], references: [id])
+  creatorId     String
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  orders        Order[]
+  schedules     DockSchedule[]
+  maintenances  DockMaintenance[]
+  
+  @@index([companyId])
+  @@index([creatorId])
+}
+
+// Dock Schedule model (working hours)
+model DockSchedule {
+  id            String    @id @default(uuid())
+  dock          Dock      @relation(fields: [dockId], references: [id])
+  dockId        String
+  dayOfWeek     Int       // 0-6 (Sunday to Saturday)
+  startTime     String    // Format: HH:MM
+  endTime       String    // Format: HH:MM
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([dockId])
+}
+
+// Dock Maintenance model
+model DockMaintenance {
+  id            String    @id @default(uuid())
+  dock          Dock      @relation(fields: [dockId], references: [id])
+  dockId        String
+  startDate     DateTime
+  endDate       DateTime
+  reason        String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([dockId])
+}
+
+// Holiday model
+model Holiday {
+  id            String    @id @default(uuid())
+  company       Company   @relation(fields: [companyId], references: [id])
+  companyId     String
+  date          DateTime
+  description   String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([companyId])
+}
